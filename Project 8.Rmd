@@ -1,0 +1,103 @@
+---
+output: html_document
+---
+##1. Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here (see the section on the Weight Lifting Exercise Dataset).
+
+##2. Environment Setup
+
+```{r}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+```
+
+##3. Data Loading and Cleaning
+
+```{r}
+TrainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TestUrl  <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+TrainFile<-"pml-traininig.csv"
+TestFile<-"pml-testing.csv"
+```
+
+####3.1 Download the datasets
+
+
+```{r}
+download.file(TrainUrl,destfile = TrainFile)
+training <- read.csv(TrainFile)
+
+download.file(TestUrl,destfile = TestFile)
+testing  <- read.csv(TestFile)
+```
+
+####3.2 create a partition using caret with the training dataset. 
+
+Althoug know that is no correct, I only i've selected only a 10 % of the values of training as Trainset with the aim of reduce the computation time
+
+```{r}
+inTrain  <- createDataPartition(training$classe, p=0.1, list=FALSE)
+
+TrainSet <- training[inTrain, ]
+
+TestSet  <- training[-inTrain, ]
+```
+
+####3.3 Remove the columns with Near Zero variance variables and ID variables
+
+```{r}
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+TestSet  <- TestSet[, -NZV]
+
+NZV_testing <- nearZeroVar(testing)
+testing  <- testing[, -NZV_testing]
+```
+
+####3.4 Remove the colomns with more than 90 % NA values
+
+```{r}
+TrainSet <- TrainSet[, colMeans(is.na(TrainSet)) < 0.9]
+TestSet <- TestSet[, colMeans(is.na(TestSet)) < 0.9]
+testing <- testing[, colMeans(is.na(testing)) < 0.9]
+```
+
+####3.5 remove identification only variables (columns 1 to 5)
+```{r}
+TrainSet <- TrainSet[, -(1:5)]
+TestSet  <- TestSet[, -(1:5)]
+testing <- testing[, -(1:5)]
+```
+
+## 4. Prediction Model Building
+
+TWO popular methods will be applied to model the regressions (in the Train dataset). Also will be applied a combination model of the 2 aforementioned prediction model. The best one (higher accuracy when is applied to the Test dataset) will be used for the quiz predictions. The methods are: Random Forests (RF) and Generalized Boosted Model (GBM). 
+
+####4.1. Obtention of Random forest and GBM models
+
+```{r}
+
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+RFmodel <- train(classe~., data=TrainSet, method="rf", trControl=controlRF)
+
+controlGBM <- trainControl(method = "repeatedcv", number = 2, repeats = 1)
+GBMmodel <- train(classe~., data=TrainSet, method="gbm",trControl=controlGBM)
+
+RFresult <- predict(RFmodel, TestSet)
+GBMresult <- predict(GBMmodel,TestSet)
+
+confusionMatrix(TestSet$classe, RFresult)$overall['Accuracy']
+confusionMatrix(TestSet$classe, GBMresult)$overall["Accuracy"]
+```
+
+##5. Aplication of the best model to the test data
+
+```{r}
+Testdata <- predict(RFmodel, newdata=testing)
+Testdata
+```
